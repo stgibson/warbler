@@ -208,6 +208,18 @@ def stop_following(follow_id):
     return redirect(f"/users/{g.user.id}/following")
 
 
+@app.route('/users/<int:user_id>/likes')
+def users_likes(user_id):
+    """Show list of messages this user likes."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+    return render_template('users/likes.html', user=user)
+
+
 @app.route('/users/add_like/<int:message_id>', methods=['POST'])
 def add_like(message_id):
     """Adds message to currently-logged-in-user's list of liked messages"""
@@ -216,7 +228,7 @@ def add_like(message_id):
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    liked_message = Message.query.get(message_id)
+    liked_message = Message.query.get_or_404(message_id)
     g.user.likes.append(liked_message)
     db.session.commit()
 
@@ -231,7 +243,7 @@ def remove_like(message_id):
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    liked_message = Message.query.get(message_id)
+    liked_message = Message.query.get_or_404(message_id)
     g.user.likes.remove(liked_message)
     db.session.commit()
 

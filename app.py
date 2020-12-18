@@ -208,6 +208,36 @@ def stop_following(follow_id):
     return redirect(f"/users/{g.user.id}/following")
 
 
+@app.route('/users/add_like/<int:message_id>', methods=['POST'])
+def add_like(message_id):
+    """Adds message to currently-logged-in-user's list of liked messages"""
+    
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    liked_message = Message.query.get(message_id)
+    g.user.likes.append(liked_message)
+    db.session.commit()
+
+    return redirect("/")
+
+
+@app.route('/users/remove_like/<int:message_id>', methods=['POST'])
+def remove_like(message_id):
+    """Remove message from currently-logged-in-user's list of liked messages"""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    liked_message = Message.query.get(message_id)
+    g.user.likes.remove(liked_message)
+    db.session.commit()
+
+    return redirect("/")
+
+
 @app.route('/users/profile', methods=["GET", "POST"])
 def profile():
     """Update profile for current user."""
@@ -326,7 +356,11 @@ def homepage():
                     .limit(100)
                     .all())
 
-        return render_template('home.html', messages=messages)
+        # get list of ids of messages the logged-in user likes
+        likes = g.user.likes
+        likes_ids = [liked_message.id for liked_message in likes]
+
+        return render_template('home.html', messages=messages, likes=likes_ids)
 
     else:
         return render_template('home-anon.html')

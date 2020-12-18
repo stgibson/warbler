@@ -34,7 +34,7 @@ class UserModelTestCase(TestCase):
     """Test User model."""
 
     def setUp(self):
-        """Create test client, add sample data."""
+        """Create test client."""
 
         User.query.delete()
         Message.query.delete()

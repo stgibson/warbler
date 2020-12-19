@@ -186,7 +186,7 @@ def add_follow(follow_id):
         flash("Access unauthorized.", "danger")
         return redirect("/")
     
-    # verify current user isn't trying to follow itself
+    # verify current user isn't trying to follow self
     if g.user.id != follow_id:
         followed_user = User.query.get_or_404(follow_id)
         g.user.following.append(followed_user)
@@ -203,7 +203,7 @@ def stop_following(follow_id):
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    # verify current user isn't trying to unfollow itself
+    # verify current user isn't trying to unfollow self
     if g.user.id != follow_id:
         followed_user = User.query.get(follow_id)
         g.user.following.remove(followed_user)
@@ -233,7 +233,7 @@ def add_like(message_id):
         return redirect("/")
 
     liked_message = Message.query.get_or_404(message_id)
-    # verify user isn't trying to like its own message
+    # verify user isn't trying to like own message
     if g.user != liked_message.user:
         g.user.likes.append(liked_message)
         db.session.commit()
@@ -250,7 +250,7 @@ def remove_like(message_id):
         return redirect("/")
 
     liked_message = Message.query.get_or_404(message_id)
-    # verify user isn't trying to unlike its own message
+    # verify user isn't trying to unlike own message
     if g.user != liked_message.user:
         g.user.likes.remove(liked_message)
         db.session.commit()

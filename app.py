@@ -209,7 +209,7 @@ def stop_following(follow_id):
 
 
 @app.route('/users/<int:user_id>/likes')
-def users_likes(user_id):
+def show_likes(user_id):
     """Show list of messages this user likes."""
 
     if not g.user:

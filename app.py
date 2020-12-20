@@ -156,7 +156,7 @@ def users_show(user_id):
 
 
 @app.route('/users/<int:user_id>/following')
-def show_following(user_id):
+def users_following(user_id):
     """Show list of people this user is following."""
 
     if not g.user:

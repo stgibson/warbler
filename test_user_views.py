@@ -8,7 +8,7 @@
 import os
 from unittest import TestCase
 
-from models import db, connect_db, User
+from models import db, connect_db, User, Message
 
 # BEFORE we import our app, let's set an environmental variable
 # to use a different database for tests (we need to do this
@@ -41,6 +41,7 @@ class UserViewTestCase(TestCase):
         """Create test client, add sample data."""
 
         User.query.delete()
+        Message.query.delete()
 
         self.client = app.test_client()
         
@@ -316,7 +317,7 @@ class UserViewTestCase(TestCase):
                 password=password)
             db.session.add(other_user)
             db.session.commit()
-            # have other user follow me
+            # have other user follow current user
             other_user.following.append(self.testuser)
             db.session.commit()
 
@@ -335,3 +336,378 @@ class UserViewTestCase(TestCase):
 
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(resp.location, f"{self.base_url}/")
+
+    def test_users_followers(self):
+        """
+            Only when you're logged in, can you see the followers page for any
+            user?
+        """
+
+        with self.client as c:
+            # try to go to other user's followers page while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            # create another user's account
+            username = "otheruser"
+            email = "other@test.com"
+            password = "password"
+            other_user = User(username=username, email=email, \
+                password=password)
+            db.session.add(other_user)
+            db.session.commit()
+            # follow other user
+            other_user.followers.append(self.testuser)
+            db.session.commit()
+
+            resp = c.get(f"/users/{other_user.id}/followers")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{username}", html)
+            self.assertIn(f"@{self.testuser.username}", html)
+
+            # try to go to other user's followers page while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.get(f"/users/{other_user.id}/followers")
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+
+    def test_add_follow(self):
+        """Only when you're logged in, can you follow any user?"""
+
+        with self.client as c:
+            # try to follow other user while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+            
+            # create another user's account
+            username = "otheruser"
+            email = "other@test.com"
+            password = "password"
+            other_user = User(username=username, email=email, \
+                password=password)
+            db.session.add(other_user)
+            db.session.commit()
+            other_user_id = other_user.id
+
+            resp = c.post(f"/users/follow/{other_user_id}", \
+                follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{self.testuser.username}", html)
+            self.assertIn(f"@{username}", html)
+            self.assertIn("Unfollow", html)
+
+            # try to follow other user while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.post(f"/users/follow/{other_user_id}")
+            
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+
+    def test_stop_following(self):
+        """Only when you're logged in, can you unfollow a user?"""
+
+        with self.client as c:
+            # try to unfollow other user while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+            
+            # create another user's account
+            username = "otheruser"
+            email = "other@test.com"
+            password = "password"
+            other_user = User(username=username, email=email, \
+                password=password)
+            db.session.add(other_user)
+            db.session.commit()
+            other_user_id = other_user.id
+
+            # follow other user
+            other_user.followers.append(self.testuser)
+            db.session.commit()
+
+            resp = c.post(f"/users/stop-following/{other_user_id}", \
+                follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{self.testuser.username}", html)
+            self.assertNotIn(f"@{username}", html)
+
+            # try to unfollow other user while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.post(f"/users/stop-following/{other_user_id}")
+            
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+
+    def test_show_likes(self):
+        """Only when you're logged in, can you see any user's likes page?"""
+
+        with self.client as c:
+            # try to see other user's likes page while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            # create another user's account to like a message
+            username = "otheruser"
+            email = "other@test.com"
+            password = "password"
+            other_user = User(username=username, email=email, \
+                password=password)
+            db.session.add(other_user)
+            db.session.commit()
+            other_user_id = other_user.id
+
+            # currently-logged-in user creates a message for other user to like
+            text = "Test message."
+            message = Message(text=text, user_id=self.testuser.id)
+            db.session.add(message)
+            db.session.commit()
+
+            # other user likes this message
+            other_user.likes.append(message)
+            db.session.commit()
+
+            resp = c.get(f"/users/{other_user_id}/likes")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{username}", html)
+            self.assertIn(f"@{self.testuser.username}", html)
+            self.assertIn(text, html)
+
+            # try to see other user's likes page while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.get(f"/users/{other_user_id}/likes")
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+
+    def test_add_like(self):
+        """Only when you're logged in, can you like a message?"""
+
+        with self.client as c:
+            # try to like a message while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            # create another user's account to create a message
+            username = "otheruser"
+            email = "other@test.com"
+            password = "password"
+            other_user = User(username=username, email=email, \
+                password=password)
+            db.session.add(other_user)
+            db.session.commit()
+            other_user_id = other_user.id
+
+            # other user creates a message to be liked
+            text = "Test message."
+            message = Message(text=text, user_id=other_user_id)
+            db.session.add(message)
+            db.session.commit()
+            message_id = message.id
+
+            resp = c.post(f"/users/add_like/{message_id}")
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+            with c.session_transaction() as sess:
+                testuser = User.query.get(sess[CURR_USER_KEY])
+                self.assertEqual(testuser.likes[0].text, text)
+
+            # try to like a message while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.post(f"/users/add_like/{message_id}", \
+                follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", html)
+
+    def test_remove_like(self):
+        """Only when you're logged in, can you unlike a message?"""
+
+        with self.client as c:
+            # try to unlike a message while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            # create another user's account to create a message
+            username = "otheruser"
+            email = "other@test.com"
+            password = "password"
+            other_user = User(username=username, email=email, \
+                password=password)
+            db.session.add(other_user)
+            db.session.commit()
+            other_user_id = other_user.id
+
+            # other user creates a message
+            text = "Test message."
+            message = Message(text=text, user_id=other_user_id)
+            db.session.add(message)
+            db.session.commit()
+            message_id = message.id
+
+            # current user likes message
+            with c.session_transaction() as sess:
+                testuser = User.query.get(sess[CURR_USER_KEY])
+                testuser.likes.append(message)
+                db.session.commit()
+
+            resp = c.post(f"/users/remove_like/{message_id}")
+            
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+            with c.session_transaction() as sess:
+                testuser = User.query.get(sess[CURR_USER_KEY])
+                self.assertEqual(len(testuser.likes), 0)
+
+            # try to unlike a message while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.post(f"/users/remove_like/{message_id}", \
+                follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", html)
+
+    def test_profile(self):
+        """
+            Can you edit your profile with correct credentials only, only when
+            you're logged in?
+        """
+
+        with self.client as c:
+            # try to edit profile with correct credentials while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            new_username = "newtestuser"
+            new_email = "newtest@test.com"
+            new_image_url = "http://new_image.png"
+            new_header_image_url = "http://new_header_image.png"
+            bio = "I am now a new user."
+            data = {
+                "username": new_username,
+                "email": new_email,
+                "image_url": new_image_url,
+                "header_image_url": new_header_image_url,
+                "bio": bio,
+                "password": self.password
+            }
+            resp = c.post("/users/profile", data=data, follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{new_username}", html)
+            self.assertIn(bio, html)
+            self.assertIn(new_image_url, html)
+            self.assertIn(new_header_image_url, html)
+
+            # try to edit profile with incorrect credentials while logged in
+            another_username = "anothertestuser"
+            another_email = "anothertest@test.com"
+            another_image_url = "http://another_image.png"
+            another_header_image_url = "http://another_header_image.png"
+            another_bio = "I am different once again."
+            wrong_password = "wrong"
+            data = {
+                "username": another_username,
+                "email": another_email,
+                "image_url": another_image_url,
+                "header_image_url": another_header_image_url,
+                "bio": another_bio,
+                "password": wrong_password
+            }
+            resp = c.post("/users/profile", data=data, follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Invalid password.", html)
+
+            # try to edit profile while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            data = {
+                "username": another_username,
+                "email": another_email,
+                "image_url": another_image_url,
+                "header_image_url": another_header_image_url,
+                "bio": another_bio,
+                "password": self.password
+            }
+            resp = c.post("/users/profile", data=data, follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", html)
+
+    def test_delete_user(self):
+        """Only when you're logged in, can you delete your account?"""
+
+        with self.client as c:
+            # try to delete account while logged in
+            testuser_id = self.testuser.id
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            resp = c.post("/users/delete")
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/signup")
+            with c.session_transaction() as sess:
+                self.assertIsNone(sess.get(CURR_USER_KEY, None))
+            self.assertIsNone( \
+                User.query.filter_by(id=testuser_id).one_or_none())
+            
+            # try to delete account while logged out (already logged out)
+            resp = c.post("/users/delete", follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", html)
+
+    def test_homepage(self):
+        """Can you go to the homepage?"""
+
+        with self.client as c:
+            # try to go to the homepage while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            resp = c.get("/")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{self.testuser.username}", html)
+
+            # try to go to the homepage while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.get("/")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            # verify on a page with a button to sign up
+            self.assertIn("Sign up", html)

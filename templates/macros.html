@@ -1,0 +1,52 @@
+{% macro user_stats(user, likes=true) -%}
+  <li class="stat">
+    <p class="small">Messages</p>
+    <h4>
+      <a href="/users/{{ user.id }}">{{ user.messages | length }}</a>
+    </h4>
+  </li>
+  <li class="stat">
+    <p class="small">Following</p>
+    <h4>
+      <a href="/users/{{ user.id }}/following">{{ user.following | length }}</a>
+    </h4>
+  </li>
+  <li class="stat">
+    <p class="small">Followers</p>
+    <h4>
+      <a href="/users/{{ user.id }}/followers">{{ user.followers | length }}</a>
+    </h4>
+  </li>
+  {% if likes %}
+  <li class="stat">
+    <p class="small">Likes</p>
+    <h4>
+      <a href="/users/{{ user.id }}/likes">{{ user.likes | length }}</a></h4>
+  </li>
+  {% endif %}
+{%- endmacro %}
+
+{% macro message(msg) -%}
+  <li class="list-group-item">
+    <a href="/messages/{{ msg.id  }}" class="message-link"/>
+    <a href="/users/{{ msg.user.id }}">
+      <img src="{{ msg.user.image_url }}" alt="user image" class="timeline-image">
+    </a>
+    <div class="message-area">
+      <a href="/users/{{ msg.user.id }}">@{{ msg.user.username }}</a>
+      <span class="text-muted">{{ msg.timestamp.strftime('%d %B %Y') }}</span>
+      <p>{{ msg.text }}</p>
+    </div>
+    {% if msg.user != g.user %}
+    <form method="POST" id="messages-form">
+      {% if msg in g.user.likes %}
+      <button class="btn btn-sm" formaction="/users/remove_like/{{ msg.id }}"><i class="fas fa-star"></i></button>
+      {% else %}
+      <button class="btn btn-sm btn-secondary" formaction="/users/add_like/{{ msg.id }}">
+        <i class="fa fa-thumbs-up"></i>
+      </button>
+      {% endif %}
+    </form>
+    {% endif %}
+  </li>
+{%- endmacro %}

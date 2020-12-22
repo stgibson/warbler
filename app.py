@@ -152,6 +152,7 @@ def users_show(user_id):
                 .order_by(Message.timestamp.desc())
                 .limit(100)
                 .all())
+    
     return render_template('users/show.html', user=user, messages=messages)
 
 
@@ -382,11 +383,7 @@ def homepage():
                     .limit(100)
                     .all())
 
-        # get list of ids of messages the logged-in user likes
-        likes = g.user.likes
-        likes_ids = [liked_message.id for liked_message in likes]
-
-        return render_template('home.html', messages=messages, likes=likes_ids)
+        return render_template('home.html', messages=messages)
 
     else:
         return render_template('home-anon.html')

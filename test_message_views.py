@@ -51,18 +51,15 @@ class MessageViewTestCase(TestCase):
 
         db.session.commit()
 
-    def test_add_message(self):
-        """Can use add a message?"""
+        self.base_url = "http://localhost"
 
-        # Since we need to change the session to mimic logging in,
-        # we need to use the changing-session trick:
+    def test_messages_add(self):
+        """Can user add a message only when logged in?"""
 
         with self.client as c:
+            # try adding message while logged in
             with c.session_transaction() as sess:
                 sess[CURR_USER_KEY] = self.testuser.id
-
-            # Now, that session setting is saved, so we can have
-            # the rest of ours test
 
             resp = c.post("/messages/new", data={"text": "Hello"})
 
@@ -71,3 +68,143 @@ class MessageViewTestCase(TestCase):
 
             msg = Message.query.one()
             self.assertEqual(msg.text, "Hello")
+
+            # try adding message while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.post("/messages/new", data={"text": "Howdy"})
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+
+            # should still only be 1 message
+            messages = Message.query.all()
+            self.assertEqual(len(messages), 1)
+
+    def test_messages_show(self):
+        """
+            Can user see other user's messages regardless of whether or not
+            user is logged in?
+        """
+
+        with self.client as c:
+            testuser_id = self.testuser.id
+            testuser_username = self.testuser.username
+            # try to see someone elses message while logged in
+            with c.session_transaction() as sess:
+                    sess[CURR_USER_KEY] = testuser_id
+
+            # create another user, who creates a message
+            username = "otheruser"
+            email = "other@test.com"
+            password = "otheruser"
+            othertestuser = User.signup(username=username,
+                                        email=email,
+                                        password=password,
+                                        image_url=None)
+            db.session.commit()
+            othertestuser_id = othertestuser.id
+
+            text = "Hello from other"
+            msg = Message(text=text, user_id=othertestuser_id)
+            db.session.add(msg)
+            db.session.commit()
+            msg_id = msg.id
+
+            resp = c.get(f"/messages/{msg_id}")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{username}", html)
+            self.assertIn(text, html)
+            self.assertIn("Follow", html)
+
+            # try to see someone elses message while logged out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.get(f"/messages/{msg_id}")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(f"@{username}", html)
+            self.assertIn(text, html)
+            self.assertNotIn("Follow", html)
+
+            # try to see own message while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = testuser_id
+
+            # first user creates own message
+            text = "Hello from self"
+            msg = Message(text=text, user_id=testuser_id)
+            db.session.add(msg)
+            db.session.commit()
+            msg_id = msg.id
+
+            resp = c.get(f"/messages/{msg_id}")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(testuser_username, html)
+            self.assertIn(text, html)
+            self.assertIn("Delete", html)
+
+    def test_messages_destroy(self):
+        """Can user delete own a message only when logged in?"""
+        with self.client as c:
+            testuser_id = self.testuser.id
+            # try to delete own message while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = testuser_id
+
+            msg = Message(text="Hello", user_id=testuser_id)
+            db.session.add(msg)
+            db.session.commit()
+            msg_id = msg.id
+
+            resp = c.post(f"/messages/{msg_id}/delete")
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(len(Message.query.all()), 0)
+
+            # try to delete a message while logged out
+            msg = Message(text="Hello", user_id=testuser_id)
+            db.session.add(msg)
+            db.session.commit()
+            msg_id = msg.id
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+
+            resp = c.post(f"/messages/{msg_id}/delete")
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+            self.assertEqual(len(Message.query.all()), 1)
+
+            # try to delete another user's message while logged in
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = testuser_id
+
+            username = "otheruser"
+            email = "other@test.com"
+            password = "otheruser"
+            othertestuser = User.signup(username=username,
+                                        email=email,
+                                        password=password,
+                                        image_url=None)
+            db.session.commit()
+            othertestuser_id = othertestuser.id
+
+            text = "Hello from other"
+            msg = Message(text=text, user_id=othertestuser_id)
+            db.session.add(msg)
+            db.session.commit()
+            msg_id = msg.id
+
+            resp = c.post(f"/messages/{msg_id}/delete")
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(resp.location, f"{self.base_url}/")
+            self.assertEqual(len(Message.query.all()), 2)
